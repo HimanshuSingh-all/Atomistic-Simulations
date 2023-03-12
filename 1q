@@ -1,0 +1,96 @@
+import numpy as np
+from time import time
+### TODO Figure out why ###
+### (lattice[:,:] != lattice[i,:]).all(axis=1)] 
+### ~(lattice[:,:] == lattice[i,:]).all(axis=1)) 
+
+
+a = 5.26
+sigma =  3.4
+eps = 120 #times kb
+fcc_cell = a*np.array( [ [ 0, 0, 0 ], [ .5, .5, 0], [ 0.5, 0, .5], [ 0, 0.5, 0.5] ] )
+
+x = np.array ( [ [ 1, 0, 0,] for i in range(4) ] )
+y = np.array ( [ [ 0, 1, 0,] for i in range(4) ] )
+z = np.array ( [ [ 0, 0, 1,] for i in range(4) ] )
+
+def perform(func):
+
+    def timer(*args, **kwargs):
+        t1 = time()
+        result = func(*args, **kwargs)
+        t2 = time()
+        print(f' took {t2-t1} s')
+        return result
+    return timer
+
+
+def translate_cell(a, x_i, y_i, z_i ):
+	return fcc_cell + a*(x_i*x + y_i*y +z_i*z)
+
+@perform
+def genlattice( x_i, y_i, z_i, fhand):
+    counter = 0
+    for i in range(x_i):
+        for j in range(y_i):
+            for k in range(z_i):
+                for n in translate_cell(a, i, j, k):
+                    fhand.write('X\t')
+                    for num in n:
+                        fhand.write(f'{num}\t')
+                    fhand.write(f'\n')
+                print(counter)
+                counter+=1
+
+def lj_pot_vector( r_1, r_2, eps, sigma, cutoff= False):
+    if cutoff:
+        pass
+    else:
+        r = np.linalg.norm((r_2-r_1),axis=1)
+        sigr = sigma/r
+        sig6r = sigr*sigr*sigr*sigr*sigr*sigr
+        sig12r = sig6r * sig6r
+        return 4*eps*( sig12r - sig6r )
+
+def lj_pot( r_1, r_2, eps, sigma, cutoff= False):
+    if cutoff:
+        pass
+    else:
+        r = np.linalg.norm((r_2-r_1))
+        sigr = sigma/r
+        sig6r = sigr*sigr*sigr*sigr*sigr*sigr
+        sig12r = sig6r * sig6r
+        return 4*eps*( sig12r - sig6r )
+
+@perform
+def calcpotentials(fhand, sigma:float, eps:float,**kwargs):
+    lattice  = np.loadtxt( fhand, skiprows= 2,  usecols= (1,2,3) )
+    sitepots = np.zeros( lattice.shape[0] )
+    for i in range(sitepots.shape[0] ):
+        sitepots[i] += np.sum( lj_pot_vector( lattice[ i, : ], lattice[~(lattice[:,:] == lattice[i,:]).all(axis=1)], eps, sigma ) )
+    print("Vectormode D0ne")
+    return sitepots
+    
+@perform
+def easymode(fhand, sigma:float, eps:float,**kwargs):
+    lattice  = np.loadtxt( fhand,skiprows = 2 , usecols= (1,2,3) )
+    sitepots = np.zeros( lattice.shape[0] )
+    for i in range(sitepots.shape[0] ):
+        for j in range(i,sitepots.shape[0] ):
+            if i==j:
+                continue
+            en = lj_pot(lattice[i], lattice[j], eps, sigma)
+            sitepots[i]+= en
+            sitepots[j]+= en
+    print("Easymode D0ne")
+    return sitepots
+
+fname = "test.xyz"
+with open(fname, 'w+') as fhand:
+    fhand.write('256 \n \n')
+    genlattice( x_i=4,y_i=4,z_i=4, fhand=fhand)
+
+with open(fname, 'r') as fhand:
+    print( np.sum( calcpotentials( fhand,sigma ,eps ,test=True ) ) )
+with open(fname, 'r') as fhand:
+    print(np.sum( easymode( fhand,sigma ,eps ,test=True ) ) )
